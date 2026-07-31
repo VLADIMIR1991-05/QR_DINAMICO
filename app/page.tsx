@@ -13,30 +13,53 @@ type SavedCode = {
   token: string;
 };
 
-type Access = { id: string; token: string };\n\nconst DEMO_URL = "https://tusitio.com";\nconst ACCESS_LIST_KEY = "qr-dinamico-accesses";\nconst LEGACY_ACCESS_KEY = "qr-dinamico-access";
+type Access = { id: string; token: string };
+
+const DEMO_URL = "https://tusitio.com";
+const ACCESS_LIST_KEY = "qr-dinamico-accesses";
+const LEGACY_ACCESS_KEY = "qr-dinamico-access";
 
 export default function Home() {
   const [destination, setDestination] = useState(DEMO_URL);
   const [name, setName] = useState("Campaña principal");
   const [color, setColor] = useState("#0B1F3A");
   const [qrData, setQrData] = useState("");
-  const [saved, setSaved] = useState<SavedCode | null>(null);\n  const [codes, setCodes] = useState<SavedCode[]>([]);
+  const [saved, setSaved] = useState<SavedCode | null>(null);
+  const [codes, setCodes] = useState<SavedCode[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
+  function saveAccesses(items: SavedCode[]) {
+    window.localStorage.setItem(ACCESS_LIST_KEY, JSON.stringify(items.map(({ id, token }) => ({ id, token }))));
+  }
+
   useEffect(() => {
-    const access = window.localStorage.getItem("qr-dinamico-access");
-    if (!access) return;
-    const stored = JSON.parse(access) as { id: string; token: string };
-    fetch(`/api/codes/${stored.id}?token=${encodeURIComponent(stored.token)}`)
-      .then((response) => response.ok ? response.json() : null)
-      .then((code: SavedCode | null) => {
-        if (!code) return;
-        setSaved({ ...code, token: stored.token });
-        setName(code.name);
-        setDestination(code.destination);
-      })
-      .catch(() => window.localStorage.removeItem("qr-dinamico-access"));
+    let accesses: Access[] = [];
+    try {
+      const storedList = window.localStorage.getItem(ACCESS_LIST_KEY);
+      if (storedList) accesses = JSON.parse(storedList) as Access[];
+      if (!accesses.length) {
+        const legacy = window.localStorage.getItem(LEGACY_ACCESS_KEY);
+        if (legacy) {
+          accesses = [JSON.parse(legacy) as Access];
+          window.localStorage.setItem(ACCESS_LIST_KEY, JSON.stringify(accesses));
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(ACCESS_LIST_KEY);
+    }
+    if (!accesses.length) return;
+    Promise.all(accesses.map(async (access) => {
+      const response = await fetch(`/api/codes/${access.id}?token=${encodeURIComponent(access.token)}`);
+      if (!response.ok) return null;
+      const code = await response.json() as Omit<SavedCode, "token">;
+      return { ...code, token: access.token } as SavedCode;
+    })).then((items) => {
+      const valid = items.filter((item): item is SavedCode => Boolean(item));
+      setCodes(valid);
+      saveAccesses(valid);
+      if (valid[0]) selectCode(valid[0], false);
+    }).catch(() => setMessage("No se pudieron cargar tus códigos guardados."));
   }, []);
 
   const previewValue = useMemo(
