@@ -8,6 +8,14 @@
     "directory": "dist/client",
     "binding": "ASSETS"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "QR-Dinamico-DB",
+      "database_id": "b3067adc-1224-45cb-94f2-1b60e9d4e3fb",
+      "migrations_dir": "drizzle"
+    }
+  ],
   "observability": {
     "enabled": true
   }
