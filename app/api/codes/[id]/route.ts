@@ -25,3 +25,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const origin = new URL(request.url).origin;
   return Response.json({ id, name: body.name, destination, scans: row?.scans || 0, shortUrl: `${origin}/r/${row?.slug}` });
 }
+
+export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+  const token = new URL(request.url).searchParams.get("token");
+  if (!token) return Response.json({ error: "Acceso requerido" }, { status: 401 });
+  await ensureSchema();
+  const result = await db().prepare("DELETE FROM qr_codes WHERE id = ? AND edit_token = ?").bind(id, token).run();
+  if (!result.meta.changes) return Response.json({ error: "No autorizado o código inexistente" }, { status: 404 });
+  return Response.json({ success: true });
+}
