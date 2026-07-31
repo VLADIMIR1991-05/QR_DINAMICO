@@ -3,7 +3,6 @@
   "name": "qr-dinamico",
   "main": "dist/server/index.js",
   "compatibility_date": "2026-07-31",
-  "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "dist/client",
     "binding": "ASSETS"
