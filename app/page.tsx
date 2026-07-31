@@ -13,14 +13,14 @@ type SavedCode = {
   token: string;
 };
 
-const DEMO_URL = "https://tusitio.com";
+type Access = { id: string; token: string };\n\nconst DEMO_URL = "https://tusitio.com";\nconst ACCESS_LIST_KEY = "qr-dinamico-accesses";\nconst LEGACY_ACCESS_KEY = "qr-dinamico-access";
 
 export default function Home() {
   const [destination, setDestination] = useState(DEMO_URL);
   const [name, setName] = useState("Campaña principal");
   const [color, setColor] = useState("#0B1F3A");
   const [qrData, setQrData] = useState("");
-  const [saved, setSaved] = useState<SavedCode | null>(null);
+  const [saved, setSaved] = useState<SavedCode | null>(null);\n  const [codes, setCodes] = useState<SavedCode[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -57,6 +57,22 @@ export default function Home() {
     };
   }, [previewValue, color]);
 
+  function selectCode(code: SavedCode, scroll = true) {
+    setSaved(code);
+    setName(code.name);
+    setDestination(code.destination);
+    setMessage("");
+    if (scroll) window.setTimeout(() => document.querySelector("#crear")?.scrollIntoView({ behavior: "smooth" }), 0);
+  }
+
+  function newCode() {
+    setSaved(null);
+    setName("Nuevo código QR");
+    setDestination(DEMO_URL);
+    setMessage("Completa los datos para crear un QR independiente.");
+    window.setTimeout(() => document.querySelector("#crear")?.scrollIntoView({ behavior: "smooth" }), 0);
+  }
+
   async function createCode(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -69,9 +85,12 @@ export default function Home() {
       });
       const data = (await response.json()) as SavedCode & { error?: string };
       if (!response.ok) throw new Error(data.error || "No se pudo crear el QR");
+      const next = [data, ...codes.filter((code) => code.id !== data.id)];
+      setCodes(next);
       setSaved(data);
-      window.localStorage.setItem("qr-dinamico-access", JSON.stringify({ id: data.id, token: data.token }));
-      setMessage("Código dinámico creado y guardado.");
+      saveAccesses(next);
+      window.localStorage.removeItem(LEGACY_ACCESS_KEY);
+      setMessage("Código dinámico creado y guardado sin afectar los anteriores.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ocurrió un error");
     } finally {
@@ -91,8 +110,33 @@ export default function Home() {
       });
       const data = (await response.json()) as SavedCode & { error?: string };
       if (!response.ok) throw new Error(data.error || "No se pudo actualizar");
-      setSaved({ ...saved, ...data });
-      setMessage("Destino actualizado. El QR sigue siendo el mismo.");
+      const updated = { ...saved, ...data, token: saved.token };
+      const next = codes.map((code) => code.id === saved.id ? updated : code);
+      setSaved(updated);
+      setCodes(next);
+      saveAccesses(next);
+      setMessage("Destino actualizado. Los demás QR no cambiaron.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ocurrió un error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteCode(code: SavedCode) {
+    if (!window.confirm(`¿Eliminar “${code.name}”? Esta acción no afecta tus otros QR.`)) return;
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/codes/${code.id}?token=${encodeURIComponent(code.token)}`, { method: "DELETE" });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error || "No se pudo eliminar");
+      const next = codes.filter((item) => item.id !== code.id);
+      setCodes(next);
+      saveAccesses(next);
+      if (saved?.id === code.id) {
+        if (next[0]) selectCode(next[0]); else newCode();
+      }
+      setMessage("Código eliminado.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ocurrió un error");
     } finally {
@@ -120,14 +164,14 @@ export default function Home() {
           <a href="#crear">Crear QR</a>
           <a href="#como-funciona">Cómo funciona</a>
         </nav>
-        <a className="outlineButton" href="#crear">Nuevo código</a>
+        <button className="outlineButton" type="button" onClick={newCode}>Nuevo código</button>
       </header>
 
       <section className="hero" id="inicio">
         <div className="intro">
           <span className="eyebrow">QR PROFESIONAL · DESTINO EDITABLE</span>
           <h1>Crea, personaliza y administra tus códigos QR</h1>
-          <p>Genera un código una sola vez y cambia su destino cuando quieras, sin volver a imprimirlo.</p>
+          <p>Genera varios códigos independientes y cambia cada destino cuando quieras, sin volver a imprimirlos.</p>
 
           <form className="formCard" id="crear" onSubmit={createCode}>
             <label htmlFor="destination">URL de destino</label>
@@ -158,10 +202,10 @@ export default function Home() {
               </button>
             ) : (
               <button className="primaryButton" disabled={busy} type="button" onClick={updateDestination}>
-                {busy ? "Actualizando…" : "Actualizar destino"}
+                {busy ? "Actualizando…" : "Actualizar este QR"}
               </button>
             )}
-            <div className="secureNote"><span aria-hidden="true">↗</span> Destino editable en cualquier momento</div>
+            <div className="secureNote"><span aria-hidden="true">↗</span> Cada código conserva su propio enlace y contador</div>
             {message && <p className="statusMessage" role="status">{message}</p>}
           </form>
         </div>
@@ -169,7 +213,7 @@ export default function Home() {
         <aside className="previewCard" aria-label="Vista previa del código QR">
           <div className="previewHeader">
             <div><span className="smallLabel">VISTA PREVIA</span><h2>{name || "Mi código QR"}</h2></div>
-            <span className="activeBadge"><i /> Activo</span>
+            <span className="activeBadge"><i /> {saved ? "Activo" : "Nuevo"}</span>
           </div>
           <div className="qrStage">
             {qrData && <img src={qrData} alt="Vista previa del código QR" />}
@@ -185,9 +229,21 @@ export default function Home() {
         </aside>
       </section>
 
+      <section className="codesSection" id="mis-codigos">
+        <div className="codesHeader"><div><span className="eyebrow">TU COLECCIÓN</span><h2>Mis códigos QR</h2></div><button className="secondaryButton" type="button" onClick={newCode}>+ Nuevo código</button></div>
+        {codes.length ? (
+          <div className="codesGrid">{codes.map((code) => (
+            <article className={`codeItem ${saved?.id === code.id ? "selected" : ""}`} key={code.id}>
+              <div className="codeMeta"><span>{code.scans} escaneos</span><h3>{code.name}</h3><p>{code.destination}</p></div>
+              <div className="codeActions"><button type="button" onClick={() => selectCode(code)}>Editar</button><a href={code.shortUrl} target="_blank" rel="noreferrer">Abrir</a><button className="dangerButton" type="button" disabled={busy} onClick={() => deleteCode(code)}>Eliminar</button></div>
+            </article>
+          ))}</div>
+        ) : <div className="emptyCodes"><p>Aún no tienes códigos guardados en este navegador.</p><button className="primaryButton" type="button" onClick={newCode}>Crear mi primer QR</button></div>}
+      </section>
+
       <section className="benefits" id="como-funciona" aria-label="Beneficios">
-        <article><span>01</span><div><h3>Crea una vez</h3><p>Obtén un QR de alta calidad listo para descargar.</p></div></article>
-        <article><span>02</span><div><h3>Actualiza el destino</h3><p>Cambia la URL sin reemplazar el código impreso.</p></div></article>
+        <article><span>01</span><div><h3>Crea varios</h3><p>Cada QR tiene su propio enlace y configuración.</p></div></article>
+        <article><span>02</span><div><h3>Actualiza uno</h3><p>Cambia su URL sin modificar los demás códigos.</p></div></article>
         <article><span>03</span><div><h3>Mide resultados</h3><p>Consulta cuántas veces se ha utilizado tu código.</p></div></article>
       </section>
 
