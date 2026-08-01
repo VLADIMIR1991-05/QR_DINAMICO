@@ -210,6 +210,15 @@ export default function Home() {
     await loadAdmin();
   }
 
+  async function editLicense(item: AdminAccount) {
+    const newName = window.prompt("Nombre de la licencia", item.name);
+    if (newName === null) return;
+    const newLimit = window.prompt("Cantidad máxima de códigos QR", String(item.max_qr));
+    if (newLimit === null) return;
+    await fetch(`/api/admin/accounts/${item.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: newName, maxQr: Number(newLimit) }) });
+    await loadAdmin();
+  }
+
   async function removeLicense(item: AdminAccount) {
     if (!window.confirm(`¿Eliminar la licencia de “${item.name}”? Sus QR pasarán a la cuenta maestra.`)) return;
     await fetch(`/api/admin/accounts/${item.id}`, { method: "DELETE" }); await loadAdmin(); await loadCodes();
@@ -332,7 +341,7 @@ export default function Home() {
           {adminData.accounts.map((item) => <div className="adminRow" key={item.id}>
             <span><strong>{item.name}</strong><small>{item.email || (item.role === "master" ? "Cuenta principal" : "Sin correo")}</small></span>
             <span>{item.qr_count} / {item.max_qr}</span><span>{item.total_scans}</span>
-            <span className="adminActions"><b className={item.status}>{item.status === "active" ? "Activa" : "Suspendida"}</b>{item.role !== "master" && <><button type="button" onClick={() => toggleLicense(item)}>{item.status === "active" ? "Suspender" : "Activar"}</button><button className="dangerButton" type="button" onClick={() => removeLicense(item)}>Eliminar</button></>}</span>
+            <span className="adminActions"><b className={item.status}>{item.status === "active" ? "Activa" : "Suspendida"}</b>{item.role !== "master" && <><button type="button" onClick={() => editLicense(item)}>Editar</button><button type="button" onClick={() => toggleLicense(item)}>{item.status === "active" ? "Suspender" : "Activar"}</button><button className="dangerButton" type="button" onClick={() => removeLicense(item)}>Eliminar</button></>}</span>
           </div>)}
         </div>
         <h3 className="allCodesTitle">Todos los QR ({adminData.codes.length})</h3>
