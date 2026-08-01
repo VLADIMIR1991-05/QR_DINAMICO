@@ -82,3 +82,34 @@ footer span { font-weight:850; } footer p { margin:0; opacity:.8; }
 .emptyCodes .primaryButton { width:auto; padding:0 24px; }
 @media(max-width:900px){.codesSection{margin:0 24px 45px}.codesGrid{grid-template-columns:1fr}}
 @media(max-width:600px){.codesSection{margin:0 20px 40px;padding:22px}.codesHeader{align-items:flex-start;flex-direction:column}.codesHeader h2{font-size:28px}.secondaryButton{width:100%}}
+
+.loginPage { min-height:100vh; display:grid; place-items:center; padding:24px; background:linear-gradient(145deg,#f7faff,#eef4ff); }
+.loginCard { width:min(100%,500px); padding:38px; background:#fff; border:1.5px solid var(--navy); border-radius:18px; box-shadow:0 25px 70px rgba(11,31,58,.14); }
+.loginCard h1 { margin:12px 0 14px; font-size:40px; }
+.loginCard p { line-height:1.55; }
+.loginCard .primaryButton { margin-top:18px; }
+.accountMenu { display:flex; align-items:center; gap:14px; font-size:13px; font-weight:800; }
+.accountMenu .outlineButton { padding:10px 15px; }
+.adminSection { max-width:1264px; margin:0 auto 55px; padding:32px; border:1.5px solid var(--navy); border-radius:16px; box-shadow:0 18px 50px rgba(11,31,58,.07); }
+.masterBadge { padding:9px 13px; color:#fff; background:var(--navy); border-radius:999px; font-size:12px; font-weight:800; }
+.licenseForm { display:grid; grid-template-columns:1.2fr 1.2fr .45fr .7fr; gap:10px; margin:22px 0; }
+.licenseForm input,.licenseForm button { min-height:49px; }
+.generatedKey { display:flex; align-items:center; gap:14px; margin:15px 0 22px; padding:17px; color:#fff; background:var(--navy); border-radius:10px; }
+.generatedKey span { font-size:13px; }
+.generatedKey strong { flex:1; color:#8ab4ff; font-size:15px; letter-spacing:.04em; overflow-wrap:anywhere; }
+.generatedKey button { border:1px solid #fff; padding:8px 12px; color:#fff; background:none; border-radius:7px; cursor:pointer; }
+.adminTable { margin:20px 0 30px; border:1px solid rgba(11,31,58,.2); border-radius:11px; overflow:hidden; }
+.adminRow { display:grid; grid-template-columns:1.5fr .5fr .5fr 1.4fr; gap:14px; align-items:center; padding:14px 16px; font-size:13px; }
+.adminRow+.adminRow { border-top:1px solid rgba(11,31,58,.15); }
+.adminHead { color:#fff; background:var(--navy); font-size:11px; font-weight:800; text-transform:uppercase; }
+.adminRow span:first-child { display:flex; flex-direction:column; gap:3px; }
+.adminRow small { opacity:.65; }
+.adminActions { display:flex!important; flex-direction:row!important; align-items:center; gap:9px!important; }
+.adminActions b { padding:5px 8px; border-radius:999px; font-size:11px; }
+.adminActions b.active { color:#067647; background:#ecfdf3; }
+.adminActions b.suspended { color:#b42318; background:#fef3f2; }
+.adminActions button { border:0; color:var(--blue); background:none; font-weight:750; cursor:pointer; }
+.adminActions .dangerButton { color:#b42318; }
+.allCodesTitle { margin:30px 0 15px; font-size:22px; }
+@media(max-width:900px){.licenseForm{grid-template-columns:1fr 1fr}.adminSection{margin:0 24px 45px}.adminRow{grid-template-columns:1fr .35fr .4fr 1fr}}
+@media(max-width:650px){.loginCard{padding:25px}.loginCard h1{font-size:34px}.accountMenu span{display:none}.licenseForm{grid-template-columns:1fr}.adminSection{margin:0 20px 40px;padding:20px}.generatedKey{align-items:flex-start;flex-direction:column}.adminHead{display:none}.adminRow{grid-template-columns:1fr 1fr}.adminActions{grid-column:1/-1}.adminRow>span:nth-child(2)::before{content:'QR: ';font-weight:800}.adminRow>span:nth-child(3)::before{content:'Escaneos: ';font-weight:800}}
