@@ -10,14 +10,14 @@ type SavedCode = {
   destination: string;
   shortUrl: string;
   scans: number;
-  token: string;
+  account_id?: string;
 };
 
-type Access = { id: string; token: string };
+type Account = { id: string; name: string; email: string; role: "master" | "license"; max_qr: number };
+type AdminAccount = Account & { status: string; expires_at: string | null; qr_count: number; total_scans: number };
+type AdminData = { accounts: AdminAccount[]; codes: (SavedCode & { owner_name?: string })[] };
 
 const DEMO_URL = "https://tusitio.com";
-const ACCESS_LIST_KEY = "qr-dinamico-accesses";
-const LEGACY_ACCESS_KEY = "qr-dinamico-access";
 
 export default function Home() {
   const [destination, setDestination] = useState(DEMO_URL);
@@ -28,39 +28,59 @@ export default function Home() {
   const [codes, setCodes] = useState<SavedCode[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [account, setAccount] = useState<Account | null>(null);
+  const [license, setLicense] = useState("");
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [adminData, setAdminData] = useState<AdminData | null>(null);
+  const [licenseName, setLicenseName] = useState("");
+  const [licenseEmail, setLicenseEmail] = useState("");
+  const [licenseLimit, setLicenseLimit] = useState(25);
+  const [generatedKey, setGeneratedKey] = useState("");
 
-  function saveAccesses(items: SavedCode[]) {
-    window.localStorage.setItem(ACCESS_LIST_KEY, JSON.stringify(items.map(({ id, token }) => ({ id, token }))));
+  async function loadCodes(selectFirst = false) {
+    const response = await fetch("/api/codes");
+    if (!response.ok) return;
+    const data = await response.json() as { codes: SavedCode[] };
+    setCodes(data.codes);
+    if (selectFirst && data.codes[0]) selectCode(data.codes[0], false);
+  }
+
+  async function loadAdmin() {
+    const response = await fetch("/api/admin/accounts");
+    if (response.ok) setAdminData(await response.json() as AdminData);
   }
 
   useEffect(() => {
-    let accesses: Access[] = [];
-    try {
-      const storedList = window.localStorage.getItem(ACCESS_LIST_KEY);
-      if (storedList) accesses = JSON.parse(storedList) as Access[];
-      if (!accesses.length) {
-        const legacy = window.localStorage.getItem(LEGACY_ACCESS_KEY);
-        if (legacy) {
-          accesses = [JSON.parse(legacy) as Access];
-          window.localStorage.setItem(ACCESS_LIST_KEY, JSON.stringify(accesses));
-        }
-      }
-    } catch {
-      window.localStorage.removeItem(ACCESS_LIST_KEY);
-    }
-    if (!accesses.length) return;
-    Promise.all(accesses.map(async (access) => {
-      const response = await fetch(`/api/codes/${access.id}?token=${encodeURIComponent(access.token)}`);
-      if (!response.ok) return null;
-      const code = await response.json() as Omit<SavedCode, "token">;
-      return { ...code, token: access.token } as SavedCode;
-    })).then((items) => {
-      const valid = items.filter((item): item is SavedCode => Boolean(item));
-      setCodes(valid);
-      saveAccesses(valid);
-      if (valid[0]) selectCode(valid[0], false);
-    }).catch(() => setMessage("No se pudieron cargar tus códigos guardados."));
+    fetch("/api/auth/session").then(async (response) => {
+      if (!response.ok) return;
+      const data = await response.json() as { account: Account };
+      setAccount(data.account);
+      await loadCodes(true);
+      if (data.account.role === "master") await loadAdmin();
+    }).finally(() => setCheckingSession(false));
   }, []);
+
+  async function login(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/session", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ license }) });
+      const data = await response.json() as { account?: Account; error?: string };
+      if (!response.ok || !data.account) throw new Error(data.error || "No se pudo iniciar sesión");
+      setAccount(data.account);
+      setLicense("");
+      await loadCodes(true);
+      if (data.account.role === "master") await loadAdmin();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Licencia incorrecta");
+    } finally { setBusy(false); }
+  }
+
+  async function logout() {
+    await fetch("/api/auth/session", { method: "DELETE" });
+    setAccount(null); setCodes([]); setSaved(null); setAdminData(null); setMessage("");
+  }
 
   const previewValue = useMemo(
     () => saved?.shortUrl || destination || DEMO_URL,
@@ -108,12 +128,10 @@ export default function Home() {
       });
       const data = (await response.json()) as SavedCode & { error?: string };
       if (!response.ok) throw new Error(data.error || "No se pudo crear el QR");
-      const next = [data, ...codes.filter((code) => code.id !== data.id)];
-      setCodes(next);
+      setCodes([data, ...codes.filter((code) => code.id !== data.id)]);
       setSaved(data);
-      saveAccesses(next);
-      window.localStorage.removeItem(LEGACY_ACCESS_KEY);
       setMessage("Código dinámico creado y guardado sin afectar los anteriores.");
+      if (account?.role === "master") await loadAdmin();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ocurrió un error");
     } finally {
@@ -129,16 +147,16 @@ export default function Home() {
       const response = await fetch(`/api/codes/${saved.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ destination, name, token: saved.token }),
+        body: JSON.stringify({ destination, name }),
       });
       const data = (await response.json()) as SavedCode & { error?: string };
       if (!response.ok) throw new Error(data.error || "No se pudo actualizar");
-      const updated = { ...saved, ...data, token: saved.token };
+      const updated = { ...saved, ...data };
       const next = codes.map((code) => code.id === saved.id ? updated : code);
       setSaved(updated);
       setCodes(next);
-      saveAccesses(next);
       setMessage("Destino actualizado. Los demás QR no cambiaron.");
+      if (account?.role === "master") await loadAdmin();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ocurrió un error");
     } finally {
@@ -150,16 +168,16 @@ export default function Home() {
     if (!window.confirm(`¿Eliminar “${code.name}”? Esta acción no afecta tus otros QR.`)) return;
     setBusy(true);
     try {
-      const response = await fetch(`/api/codes/${code.id}?token=${encodeURIComponent(code.token)}`, { method: "DELETE" });
+      const response = await fetch(`/api/codes/${code.id}`, { method: "DELETE" });
       const data = await response.json() as { error?: string };
       if (!response.ok) throw new Error(data.error || "No se pudo eliminar");
       const next = codes.filter((item) => item.id !== code.id);
       setCodes(next);
-      saveAccesses(next);
       if (saved?.id === code.id) {
         if (next[0]) selectCode(next[0]); else newCode();
       }
       setMessage("Código eliminado.");
+      if (account?.role === "master") await loadAdmin();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ocurrió un error");
     } finally {
@@ -175,6 +193,42 @@ export default function Home() {
     link.click();
   }
 
+  async function createLicense(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true); setGeneratedKey("");
+    try {
+      const response = await fetch("/api/admin/accounts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: licenseName, email: licenseEmail, maxQr: licenseLimit }) });
+      const data = await response.json() as { key?: string; error?: string };
+      if (!response.ok || !data.key) throw new Error(data.error || "No se pudo crear la licencia");
+      setGeneratedKey(data.key); setLicenseName(""); setLicenseEmail(""); await loadAdmin();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Ocurrió un error"); }
+    finally { setBusy(false); }
+  }
+
+  async function toggleLicense(item: AdminAccount) {
+    await fetch(`/api/admin/accounts/${item.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: item.status === "active" ? "suspended" : "active" }) });
+    await loadAdmin();
+  }
+
+  async function removeLicense(item: AdminAccount) {
+    if (!window.confirm(`¿Eliminar la licencia de “${item.name}”? Sus QR pasarán a la cuenta maestra.`)) return;
+    await fetch(`/api/admin/accounts/${item.id}`, { method: "DELETE" }); await loadAdmin(); await loadCodes();
+  }
+
+  if (checkingSession) return <main className="loginPage"><div className="loginCard"><span className="eyebrow">QR DINÁMICO</span><h1>Cargando panel…</h1></div></main>;
+  if (!account) return (
+    <main className="loginPage">
+      <form className="loginCard" onSubmit={login}>
+        <span className="eyebrow">ACCESO SEGURO</span><h1>Administra tus códigos QR</h1>
+        <p>Ingresa tu licencia para ver los mismos códigos desde cualquier computadora o celular.</p>
+        <label htmlFor="license">Licencia de acceso</label>
+        <input id="license" type="password" required value={license} onChange={(event) => setLicense(event.target.value)} placeholder="QR-XXXX-XXXX" autoComplete="current-password" />
+        <button className="primaryButton" disabled={busy} type="submit">{busy ? "Ingresando…" : "Ingresar"}</button>
+        {message && <p className="statusMessage" role="alert">{message}</p>}
+      </form>
+    </main>
+  );
+
   return (
     <main>
       <header className="topbar">
@@ -187,7 +241,7 @@ export default function Home() {
           <a href="#crear">Crear QR</a>
           <a href="#como-funciona">Cómo funciona</a>
         </nav>
-        <button className="outlineButton" type="button" onClick={newCode}>Nuevo código</button>
+        <div className="accountMenu"><span>{account.name}</span><button className="outlineButton" type="button" onClick={logout}>Salir</button></div>
       </header>
 
       <section className="hero" id="inicio">
@@ -261,8 +315,29 @@ export default function Home() {
               <div className="codeActions"><button type="button" onClick={() => selectCode(code)}>Editar</button><a href={code.shortUrl} target="_blank" rel="noreferrer">Abrir</a><button className="dangerButton" type="button" disabled={busy} onClick={() => deleteCode(code)}>Eliminar</button></div>
             </article>
           ))}</div>
-        ) : <div className="emptyCodes"><p>Aún no tienes códigos guardados en este navegador.</p><button className="primaryButton" type="button" onClick={newCode}>Crear mi primer QR</button></div>}
+        ) : <div className="emptyCodes"><p>Esta licencia aún no tiene códigos QR.</p><button className="primaryButton" type="button" onClick={newCode}>Crear mi primer QR</button></div>}
       </section>
+
+      {account.role === "master" && adminData && <section className="adminSection" id="administracion">
+        <div className="codesHeader"><div><span className="eyebrow">CUENTA MAESTRA</span><h2>Licencias y administración total</h2></div><span className="masterBadge">Acceso completo</span></div>
+        <form className="licenseForm" onSubmit={createLicense}>
+          <input required value={licenseName} onChange={(event) => setLicenseName(event.target.value)} placeholder="Nombre del cliente o licencia" />
+          <input type="email" value={licenseEmail} onChange={(event) => setLicenseEmail(event.target.value)} placeholder="Correo (opcional)" />
+          <input type="number" min="1" max="10000" value={licenseLimit} onChange={(event) => setLicenseLimit(Number(event.target.value))} aria-label="Límite de códigos QR" />
+          <button className="primaryButton" disabled={busy} type="submit">Crear licencia</button>
+        </form>
+        {generatedKey && <div className="generatedKey"><span>Licencia creada — cópiala ahora:</span><strong>{generatedKey}</strong><button type="button" onClick={() => navigator.clipboard.writeText(generatedKey)}>Copiar</button></div>}
+        <div className="adminTable">
+          <div className="adminRow adminHead"><span>Licencia</span><span>QR</span><span>Escaneos</span><span>Estado / acciones</span></div>
+          {adminData.accounts.map((item) => <div className="adminRow" key={item.id}>
+            <span><strong>{item.name}</strong><small>{item.email || (item.role === "master" ? "Cuenta principal" : "Sin correo")}</small></span>
+            <span>{item.qr_count} / {item.max_qr}</span><span>{item.total_scans}</span>
+            <span className="adminActions"><b className={item.status}>{item.status === "active" ? "Activa" : "Suspendida"}</b>{item.role !== "master" && <><button type="button" onClick={() => toggleLicense(item)}>{item.status === "active" ? "Suspender" : "Activar"}</button><button className="dangerButton" type="button" onClick={() => removeLicense(item)}>Eliminar</button></>}</span>
+          </div>)}
+        </div>
+        <h3 className="allCodesTitle">Todos los QR ({adminData.codes.length})</h3>
+        <div className="codesGrid">{adminData.codes.map((code) => <article className="codeItem" key={code.id}><div className="codeMeta"><span>{code.owner_name || "Sin propietario"} · {code.scans} escaneos</span><h3>{code.name}</h3><p>{code.destination}</p></div><div className="codeActions"><button type="button" onClick={() => selectCode(code)}>Editar</button><a href={code.shortUrl} target="_blank" rel="noreferrer">Abrir</a><button className="dangerButton" type="button" onClick={() => deleteCode(code)}>Eliminar</button></div></article>)}</div>
+      </section>}
 
       <section className="benefits" id="como-funciona" aria-label="Beneficios">
         <article><span>01</span><div><h3>Crea varios</h3><p>Cada QR tiene su propio enlace y configuración.</p></div></article>
